@@ -1,0 +1,106 @@
+doctype html
+html
+  head
+    title Labos 2
+    style.
+      section { border-top: 1px dashed #888; margin-top: 1.5em; }
+      .ok { color: green; }
+      .err { color: red; }
+      pre { background: #f4f4f4; padding: 0.5em; white-space: pre-wrap; }
+  body
+    h1 Labos 2
+    section
+      h2 SQL umetanje (SQL Injection)
+
+      p #[b Upute:] Pretraga vraća korisnika s točno upisanim korisničkim imenom (npr. #[code admin]). S uključenom ranjivošću unos se lijepi izravno u SQL upit, pa unos #[code ' OR '1'='1] (tautologija) vraća sve korisnike. S isključenom ranjivošću koristi se parametrizirani upit i isti unos ne vraća ništa.
+
+      form(method="post" action="/sqlinjection")
+        p
+          label
+            input(type="checkbox" name="vulnerable" checked=sqliVulnerable)
+            |  Ranjivost uključena
+        p
+          label
+            | Korisničko ime: 
+            input(type="text" name="username" value=sqliUsername)
+          | &nbsp;
+          button(type="submit") Pretraži
+
+      if query
+        p Izvršeni upit:
+        pre= query
+      if queryParam !== undefined
+        p Parametar $1 (poslan bazi odvojeno od upita):
+        pre= queryParam
+      if sqliError
+        p.err Greška iz baze: #{sqliError}
+
+      if sqlInjectionResults && !sqliError
+        p Broj pronađenih korisnika: #{sqlInjectionResults.length}
+        if sqlInjectionResults.length > 0
+          table(border="1")
+            tr
+              th username
+              th email
+            each result in sqlInjectionResults
+              tr
+                td= result.username
+                td= result.email
+    section
+      h2 Loša autentifikacija (Broken Authentication)
+
+      p #[b Upute:] Testni korisnici: #[code admin], #[code ana], #[code mirko]. Lozinke nisu navedene, a slaba lozinka admina može se otkriti napadom rječnikom.
+      ul
+        li #[b Ranjivost uključena:] poruke otkrivaju postoji li korisnik ("Korisnik ne postoji" / "Kriva lozinka"), broj pokušaja je neograničen, lozinka se uspoređuje s onom pohranjenom kao čisti tekst, a kolačić sjednice nema zastavicu HttpOnly (JavaScript ga može pročitati).
+        li #[b Ranjivost isključena:] generička poruka, račun se zaključava na 5 minuta nakon 3 neuspjela pokušaja, lozinka se provjerava preko Argon2id hasha, a kolačić je HttpOnly (i Secure preko HTTPS-a).
+      p Napad rječnikom isprobava 10 čestih lozinki za upisano korisničko ime (polje za lozinku se ignorira). Isprobajte ga za #[code admin] s uključenom pa s isključenom ranjivošću.
+
+      form(method="post" action="/badauth")
+        p
+          label
+            input(type="checkbox" name="vulnerable" checked=authVulnerable)
+            |  Ranjivost uključena
+        p
+          label
+            | Korisničko ime: 
+            input(type="text" name="username" value=authUsername)
+          | &nbsp;
+          label
+            | Lozinka: 
+            input(type="password" name="password")
+        p
+          button(type="submit") Prijava
+          | &nbsp;
+          button(type="submit" formaction="/badauth/bruteforce") Pokreni napad rječnikom
+
+      form(method="post" action="/badauth/reset")
+        button(type="submit") Resetiraj brojače neuspjelih pokušaja
+        if resetDone
+          span.ok  Brojači su resetirani, zaključani računi su otključani.
+
+      if authResult
+        p(class=authResult.success ? "ok" : "err")= authResult.message
+
+      if attackLog
+        p Dnevnik napada:
+        pre= attackLog.join("\n")
+
+      h3 Sjednica
+      if session && currentUser
+        p.ok Prijavljeni ste kao #{currentUser.username} (#{currentUser.email}).
+        if session.vulnerableLogin
+          p Prijava je obavljena s uključenom ranjivosti:
+          ul
+            li Lozinka je uspoređena s vrijednosti pohranjenom u bazi kao čisti tekst: #[code= currentUser.password]
+            li Kolačić sjednice postavljen je BEZ zastavice HttpOnly. Gumb ispod pokazuje da ga JavaScript (pa tako i XSS napadač) može pročitati.
+        else
+          p Prijava je obavljena s isključenom ranjivosti:
+          ul
+            li Lozinka je provjerena preko Argon2id hasha (salt je ugrađen u zapis): #[code= currentUser.password_hash]
+            li Kolačić sjednice postavljen je SA zastavicom HttpOnly. Gumb ispod pokazuje da ga JavaScript ne vidi.
+        p
+          button(type="button" onclick="alert('document.cookie = \"' + document.cookie + '\"')") Prikaži document.cookie
+        form(method="post" action="/logout")
+          button(type="submit") Odjava
+      else
+        p Niste prijavljeni.
